@@ -3,10 +3,19 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <UserSecretsId>dotnet-Pallet_Builder_Service-287B1B0C-53A9-4FE9-8621-A35C1BBBB376</UserSecretsId>
-    <RootNamespace>Pallet_Builder_Service</RootNamespace>
+    <RootNamespace>ScientificLogistics.PalletBuilder</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup Condition=" '$(RunConfiguration)' == 'Pallet_Builder_Service' ">
+    <StartAction>Project</StartAction>
+    <EnvironmentVariables>
+      <Variable name="DOTNET_ENVIRONMENT" value="Development" />
+      <Variable name="TNS_ADMIN" value="/usr/" />
+    </EnvironmentVariables>
+  </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.2" />
+    <PackageReference Include="Dapper" Version="2.0.30" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="2.19.60" />
   </ItemGroup>
 </Project>

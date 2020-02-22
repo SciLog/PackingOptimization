@@ -1,10 +1,20 @@
-﻿{
+{
   "profiles": {
+    "ScientificLogistics.PalletBuilder": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:5000"
+    },
     "Pallet_Builder_Service": {
       "commandName": "Project",
+      "launchBrowser": true,
       "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:5002"
     }
   }
 }

@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace Pallet_Builder_Service
+namespace ScientificLogistics.PalletBuilder
 {
 	public class Program
 	{

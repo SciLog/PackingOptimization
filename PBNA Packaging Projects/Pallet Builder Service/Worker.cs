@@ -5,8 +5,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Dapper;
+using Oracle.ManagedDataAccess.Client;
+using System.Diagnostics;
 
-namespace Pallet_Builder_Service
+namespace ScientificLogistics.PalletBuilder
 {
 	public class Worker : BackgroundService
 	{
@@ -17,13 +20,22 @@ namespace Pallet_Builder_Service
 			_logger = logger;
 		}
 
-		protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+		protected override Task ExecuteAsync(CancellationToken stoppingToken)
 		{
-			while (!stoppingToken.IsCancellationRequested)
+			string connectionString = "Data Source=palletizer_high;User ID=admin;Password=BackpackingTr1p;Connection Timeout=120;";
+
+			using (OracleConnection objConn = new OracleConnection(connectionString))
 			{
-				_logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-				await Task.Delay(1000, stoppingToken);
+				try
+				{
+					objConn.Open();
+				}
+				catch(Exception ex)
+				{
+					Debug.WriteLine(ex.Message);
+				}
 			}
+			return Task.CompletedTask;
 		}
 	}
 }
