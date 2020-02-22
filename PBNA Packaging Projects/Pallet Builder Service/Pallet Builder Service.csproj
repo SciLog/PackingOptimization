@@ -4,6 +4,7 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <UserSecretsId>dotnet-Pallet_Builder_Service-287B1B0C-53A9-4FE9-8621-A35C1BBBB376</UserSecretsId>
     <RootNamespace>ScientificLogistics.PalletBuilder</RootNamespace>
+    <AssemblyName>PalletBuilderService</AssemblyName>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Pallet_Builder_Service' ">
