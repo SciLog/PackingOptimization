@@ -15,7 +15,7 @@ namespace ScientificLogistics.PalletBuilder.Core
 		public int DbayLayersPerPallet { get; set; }
 		public int FullPalletQuantity { get; set; }
 
-		public int PackagePriority { get; set; }
+		public int Priority { get; set; }
 
 		public int MixedLayerPickSequence { get; set; }
 

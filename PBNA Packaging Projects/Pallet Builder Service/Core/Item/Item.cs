@@ -8,7 +8,7 @@ namespace ScientificLogistics.PalletBuilder.Core
 	{
 		public string Name { get; set; }
 
-		public Package Package { get; set; }
+		public Package Package { get; set; } = new Package();
 
 		public Brand Brand { get; set; }
 
@@ -44,5 +44,29 @@ namespace ScientificLogistics.PalletBuilder.Core
 		public string ProductMixCode { get; set; }
 
 		public bool IsChilled { get; set; }
+
+		// --- For Dapper SQL ---
+
+		private int PackageTypeId 
+		{ 
+			set { Package.PackageTypeId = value; }
+		}
+		private int PackagePriority
+		{
+			set { Package.Priority = value; }
+		}
+		private int PackageCasesPerLayer
+		{
+			set { Package.CasesPerLayer = value; }
+		}
+		private int PackageLayersPerPallet
+		{
+			set { Package.LayersPerPallet = value; }
+		}
+		private int PackageFullPalletQuantity
+		{
+			set { Package.FullPalletQuantity = value; }
+		}
+
 	}
 }

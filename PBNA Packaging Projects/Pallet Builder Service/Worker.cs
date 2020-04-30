@@ -105,6 +105,31 @@ namespace ScientificLogistics.PalletBuilder
 					Console.WriteLine($"{slotting.BuildLocationId}, {slotting.PickDirectionCode}, {slotting.PickMethodCode}, {slotting.InventoryId}");
 				}
 
+
+				// Unstackables
+
+				List<Unstackable> unstackables = new UnstackableRepository().GetForLocation(260);
+
+				Console.WriteLine();
+				Console.WriteLine();
+				Console.WriteLine($"{unstackables.Count} Unstackables Returned:");
+				Console.WriteLine();
+
+				foreach (Unstackable unstackable in unstackables)
+				{
+					Console.WriteLine($"{unstackable.TopPackageId}, {unstackable.BottomPackageId}, {unstackable.PackageIdToRemove}");
+				}
+
+
+				// Unstackables
+
+				Item defaultItemConfig = new ItemRepository().GetDefaultConfig(1);
+
+				Console.WriteLine();
+				Console.WriteLine();
+				Console.WriteLine($"Default Item Config: {defaultItemConfig.Height}, {defaultItemConfig.Width}, {defaultItemConfig.Weight}");
+				Console.WriteLine();
+
 			}
 			catch (Exception ex)
 			{
