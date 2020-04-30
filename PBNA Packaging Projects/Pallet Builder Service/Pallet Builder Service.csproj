@@ -5,6 +5,8 @@
     <UserSecretsId>dotnet-Pallet_Builder_Service-287B1B0C-53A9-4FE9-8621-A35C1BBBB376</UserSecretsId>
     <RootNamespace>ScientificLogistics.PalletBuilder</RootNamespace>
     <AssemblyName>PalletBuilderService</AssemblyName>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <StartupObject>ScientificLogistics.PalletBuilder.Program</StartupObject>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Pallet_Builder_Service' ">
@@ -16,17 +18,18 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.2" />
     <PackageReference Include="Dapper" Version="2.0.30" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.9.10" />
     <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="2.19.60" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="cwallet.sso">
+    <None Update="wallet\cwallet.sso">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="sqlnet.ora">
+    <None Update="wallet\sqlnet.ora">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="tnsnames.ora">
+    <None Update="wallet\tnsnames.ora">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
