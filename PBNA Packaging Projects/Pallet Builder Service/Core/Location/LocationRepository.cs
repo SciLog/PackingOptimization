@@ -19,7 +19,7 @@ namespace ScientificLogistics.PalletBuilder.Core
 				NVL(ls.loc_shpcont_hgt_unit_qty, 5.25) AS DefaultPalletHeight,				
 				NVL(ls.loc_shpcont_wdth_unit_qty, 40) AS DefaultPalletWidth,		
 				NVL(ls.loc_shpcont_lngth_unit_qty, 48) AS DefaultPalletLength,	
-				DECODE(loc_adv_pal_bld_flg,'Y','TRUE','N','FALSE') AS ApbFlag,
+				DECODE(loc_adv_pal_bld_flg,'Y','TRUE','N','FALSE') AS IsApb,
 				automtn_min_layr_qty AS MinimumLayerAtmn,
 				veh_bay_min_ful_pct AS DBayTruckMinimumFillPct,
 				veh_bay_tall_btl_hgt_qty AS TallBottleHeight,
@@ -32,11 +32,11 @@ namespace ScientificLogistics.PalletBuilder.Core
 				lop.sku_cnt_pct AS SkuCountWeightage,
 				lop.item_wght_pct AS TotalItemWeightWeightage,
 				NVL(dpt.default_pallet_type,'002') AS DefaultNisPalletType,
-				DECODE(lop.sap_ord_flg,'Y','TRUE','N','FALSE') AS SapOrderFlag,
-				DECODE(lop.MERCH_PAL_ENBL_FLG,'Y','TRUE','N','FALSE') AS MerchandisePalletEnableFlag,
-				DECODE(lop.trnsprt_seq_by_rte_enbl_flg,'Y','TRUE','N','FALSE') AS TransportSeparateByRouteEnableFlag,
+				DECODE(lop.sap_ord_flg,'Y','TRUE','N','FALSE') AS IsSapOrder,
+				DECODE(lop.MERCH_PAL_ENBL_FLG,'Y','TRUE','N','FALSE') AS IsMerchandisePalletEnable,
+				DECODE(lop.trnsprt_seq_by_rte_enbl_flg,'Y','TRUE','N','FALSE') AS IsTransportSeparateByRouteEnable,
 				lop.trnsprt_seq_by_rte_sort_cde AS TransportSequenceByRouteSortOrder,
-				DECODE(lop.rte_based_dely_enbl,'Y','TRUE','N','FALSE') AS RouteBasedDeliveryEnableFlag
+				DECODE(lop.rte_based_dely_enbl,'Y','TRUE','N','FALSE') AS IsRouteBasedDeliveryEnable
 			FROM
 				loc_shpcont ls,
 				loc_ofi_prfl lop,
@@ -49,6 +49,32 @@ namespace ScientificLogistics.PalletBuilder.Core
 				AND lop.delete_flg = 'N'
 				AND :buildDate BETWEEN ls.eff_beg_dtm and ls.eff_end_dtm
 				AND dpt.whse_code (+) = TO_CHAR(ls.loc_id)";
+
+		private const string GET_PRIMARY_BUILD_PROFILE_SQL = @"
+			SELECT
+				 loc_id AS LocationId,
+				 loc_prmry_bld_id AS PrimaryBuildLocationId,
+				 DECODE(loc_adv_pal_bld_flg,'Y','TRUE','N','FALSE') AS IsApb,
+			     automtn_min_layr_qty AS MinimumLayerAtmn,
+				 veh_bay_min_ful_pct AS DBayTruckMinimumFillPct,
+				 veh_bay_tall_btl_hgt_qty AS TallBottleHeight,
+				 def_pal_item_id AS DefaultPalletInventoryId,
+				 topnsku_ful_pct  AS TopNSkuPercent,
+				 ord_bsd_ful_pct AS OrderBasePercent,			 
+				 40.0 AS AbmHeavyItemMinimumHeight,
+				 DECODE(sap_ord_flg,'Y','TRUE','N','FALSE') AS IsSapOrder,
+				 DECODE(MERCH_PAL_ENBL_FLG,'Y','TRUE','N','FALSE') AS IsMerchandisePalletEnable,
+				-- GeoBox Enhancements '19
+				DECODE(trnsprt_seq_by_rte_enbl_flg,'Y','TRUE','N','FALSE') AS IsTransportSeparateByRouteEnable,
+				trnsprt_seq_by_rte_sort_cde AS TransportSequenceByRouteSortOrder,
+				DECODE(rte_based_dely_enbl,'Y','TRUE','N','FALSE') AS IsRouteBasedDeliveryEnable
+			FROM
+				 loc_ofi_prfl
+			WHERE 
+				 loc_id = :locationId
+				 AND delete_flg = 'N' 
+				 AND :buildDate BETWEEN eff_beg_dtm AND eff_end_dtm";
+
 
 		#endregion
 
@@ -66,6 +92,20 @@ namespace ScientificLogistics.PalletBuilder.Core
 					BuildDate = date,
 				}
 			).FirstOrDefault();
+		}
+
+		public Location GetLocationProfile(int locationId, DateTime date)
+		{
+			return Select<Location>
+			(
+				GET_PRIMARY_BUILD_PROFILE_SQL,
+				new
+				{
+					LocationId = locationId,
+					BuildDate = date,
+				}
+			).FirstOrDefault();
+
 		}
 
 		#endregion

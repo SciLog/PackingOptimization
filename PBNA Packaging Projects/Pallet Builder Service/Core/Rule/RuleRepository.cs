@@ -60,7 +60,7 @@ namespace ScientificLogistics.PalletBuilder.Core
 		}
 
 
-		public List<Rule> GetRules(int locationId)
+		public List<Rule> GetRulesForLocation(int locationId)
 		{
 			return GetRules(locationId, PalletOrderStatus.New.Code);
 		}

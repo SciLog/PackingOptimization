@@ -6,11 +6,13 @@ namespace ScientificLogistics.PalletBuilder.Core
 {
 	public class Item
 	{
+		#region -- Public Properties --
+
 		public string Name { get; set; }
 
 		public Package Package { get; set; } = new Package();
 
-		public Brand Brand { get; set; }
+		public Brand Brand { get; set; } = new Brand() { BrandId = 1 };
 
 		public int InventoryId { get; set; }
 		public int InventoryGroupId { get; set; } = 7;
@@ -24,13 +26,13 @@ namespace ScientificLogistics.PalletBuilder.Core
 		public int FpLayersPerPallet { get; set; } = 0;
 		public int FpFullPalletQuantity { get; set; } = int.MaxValue;
 
-		public double CostumerOrderDblUintsPerCase { get; set; } = 1;
+		public double CustomerOrderableUintsPerCase { get; set; } = 1;
 
 		public string PalletTypeCode { get; set; }
 		public string InventoryTypeCode { get; set; }
 
-		public bool PrivIsDefaultPallet { get; set; }
-		public bool PrivIsStarterPallet { get; set; }
+		public bool IsDefaultPallet { get; set; }
+		public bool IsStarterPallet { get; set; }
 
 		public int StackFactor { get; set; } = 0;
 
@@ -45,8 +47,23 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public bool IsChilled { get; set; }
 
+		// ---
+
+		public bool IsCO2Supply => SupplyTypeCode?.Equals(ItemTypeCode.C02Supply) ?? false;
+		public bool IsPopSupply => SupplyTypeCode?.Equals(ItemTypeCode.POPSupply) ?? false;
+		public bool HasBib => ProductMixCode == ItemTypeCode.BIBProductMix;
+
+		#endregion
+
+
+		#region -- Private Properties --
+
 		// --- For Dapper SQL ---
 
+		private int PackageId
+		{
+			set { Package.PackageId = value; }
+		}
 		private int PackageTypeId 
 		{ 
 			set { Package.PackageTypeId = value; }
@@ -67,6 +84,60 @@ namespace ScientificLogistics.PalletBuilder.Core
 		{
 			set { Package.FullPalletQuantity = value; }
 		}
+		private bool PackageIsUnstableInBay
+		{
+			set { Package.IsUnstableInBay = value; }
+		}
+		private int PackageDbayLayersPerPallet
+		{
+			set { Package.DbayLayersPerPallet = value; }
+		}
+		private string PackageContCode
+		{
+			set { Package.ContCode = value; }
+		}
+		private string PackagePackageContMtrlCode
+		{
+			set { Package.PackageContMtrlCode = value; }
+		}
+
+		private int BrandId
+		{
+			set { Brand.BrandId = value; }
+		}
+		private string BrandCategoryTypeCode
+		{
+			set { Brand.CategoryTypeCode = value; }
+		}
+
+		internal void Combine(Item item)
+		{
+			Package = item.Package;
+			Height = item.Height;
+			Width = item.Width;
+			Length = item.Length;
+			Weight = item.Weight;
+			FpCasesPerLayer = item.FpCasesPerLayer;
+			FpLayersPerPallet = item.FpLayersPerPallet;
+			FpFullPalletQuantity = item.FpFullPalletQuantity;
+			StackFactor = item.StackFactor;
+			PackageIdOverride = item.PackageIdOverride;
+			CustomerOrderableUintsPerCase = item.CustomerOrderableUintsPerCase;
+			BrandLayerSequence = item.BrandLayerSequence;
+			InventoryGroupId = item.InventoryGroupId;
+
+			if (PalletTypeCode == null)
+			{
+				PalletTypeCode = item.PalletTypeCode;
+			}
+
+			Package.PackageContMtrlCode = item.Package.PackageContMtrlCode;
+			Package.ContCode = item.Package.ContCode;
+
+			Brand = item.Brand;
+		}
+
+		#endregion
 
 	}
 }

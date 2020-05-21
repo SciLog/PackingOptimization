@@ -17,8 +17,8 @@ namespace ScientificLogistics.PalletBuilder.Core
 		public DateTime DBayCutoff { get; set; }
 		public DateTime BulkCutoff { get; set; }
 
-		public string BulkRouteFlag { get; set; }
-		public string DBayRouteFlag { get; set; }
+		public bool IsBulkRoute { get; set; }
+		public bool IsDBayRoute { get; set; }
 
 
 		public int BulkThreshold { get; set; }
@@ -44,10 +44,10 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public List<BuildMethod> BuildMethods { get; set; }
 
-		public int PrimaryBuild { get; set; }
+		public int PrimaryBuildLocationId { get; set; }
 
-		public bool ApbFlag { get; set; }
-		public bool AbmFlag { get; set; }
+		public bool IsApb { get; set; }
+		public bool IsAbm { get; set; }
 
 		public List<Slotting> Slottings { get; set; }
 
@@ -74,21 +74,25 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public string DefaultNisPalletType { get; set; }
 
-		public bool SapOrderFlag { get; set; }
+		public bool IsSapOrder { get; set; }
 
 		// --- MERCH'18
 
-		public string MerchandisePalletEnableFlag { get; set; }
+		public bool IsMerchandisePalletEnable { get; set; }
 
 		// --- GeoBox Enhancements '19
 
-		public bool TransportSeparateByRouteEnableFlag { get; set; }
+		public bool IsTransportSeparateByRouteEnable { get; set; }
 		public int TransportSequenceByRouteSortOrder { get; set; }
 
-		public bool RouteBasedDeliveryEnableFlag { get; set; }
+		public bool IsRouteBasedDeliveryEnable { get; set; }
 
 		
 
+		private int DefaultPalletInventoryId
+		{ 
+			set { DefaultPallet.InventoryId = value; } 
+		}
 		private double DefaultPalletHeight 
 		{ 
 			set { DefaultPallet.Height = value; } 

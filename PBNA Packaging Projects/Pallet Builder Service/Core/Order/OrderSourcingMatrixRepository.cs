@@ -37,14 +37,14 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		#region -- Public methods --
 
-		public List<OrderSourcingMatrix> GetOrderSourcingInfo(int salesLocationId, string deliveryMethodCode, DateTime buildDate)
+		public List<OrderSourcingMatrix> GetOrderSourcingInfo(int locationId, string deliveryMethodCode, DateTime buildDate)
 		{
 			return Select<OrderSourcingMatrix>
 			(
 				GET_ORDER_SOURCING_MATRIX_SQL,
 				new
 				{
-					LocationId = salesLocationId,
+					LocationId = locationId,
 					BuildDate = buildDate,
 					DeliveryMethodCode = deliveryMethodCode
 				}

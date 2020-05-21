@@ -14,15 +14,15 @@ namespace ScientificLogistics.PalletBuilder
 			
 			// Locking Orders if needed		
 			
-			List<Rule> ruleList = ruleRepository.GetRules(locationId);
+			List<Rule> ruleList = ruleRepository.GetRulesForLocation(locationId);
 
-			if(ruleList.IsRuleActive(Constants.RULE_ID_INDUCT_CHECK_DELVY_DTE))
+			if (ruleList.IsRuleActive(RuleTypeCode.InductCheckDeliveryDate))
 			{
 				//orderDelegate.lockOrdersAfterDispCutoff(locId, rulesDelegate.getDelyMethodsHavingRuleActive(Constants.RULE_ID_INDUCT_CHECK_DELVY_DTE, rules));
 			}
 
 			//Check to see if the location is an automation site
-			if (ruleList.IsRuleActive(Constants.RULE_ID_AUTOMATION))
+			if (ruleList.IsRuleActive(RuleTypeCode.Automation))
 			{
 				//automationDelegate.copyAutomationPalletSol(locId);
 				//automationDelegate.copyAutomationTransportSol(locId);

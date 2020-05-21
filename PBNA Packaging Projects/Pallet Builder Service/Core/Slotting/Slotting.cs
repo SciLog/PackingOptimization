@@ -28,5 +28,34 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public DateTime EffecitveDateFrom { get; set; }
 		public DateTime EffectiveDateTo { get; set; }
+
+		public static Slotting GetDefaultForChilled(int buildLocationId, int inventoryId, Order order) =>
+			new Slotting
+			{
+				BuildLocationId = buildLocationId,
+				InventoryId = inventoryId,
+				BuildDate = order.BuildDate,
+				PickDirectionCode = "---",
+				PickAreaCode = "006",
+				PickMethodCode = PalletBuilder.PickMethodCode.Chilled,
+				PickZoneCode = BuildMethodCode.CHLP,
+				SideCode = "-",
+				PickSequence = 2999
+			};
+
+		public static Slotting getDefaultForEaches(int eachesBuildLocationId, int inventoryId, Order order) =>
+			new Slotting
+			{
+				BuildLocationId = eachesBuildLocationId,
+				InventoryId = inventoryId,
+				BuildDate = order.BuildDate,
+				PickDirectionCode = "---",
+				PickAreaCode = "006",
+				PickMethodCode = PalletBuilder.PickMethodCode.Eaches,
+				PickZoneCode = BuildMethodCode.MANL,
+				SideCode = "-",
+				PickSequence = 2999
+			};
 	}
+
 }
