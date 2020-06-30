@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace ScientificLogistics.PalletBuilder.Core
@@ -53,5 +54,47 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 			return orderLineDictionary;
 		}
+
+		public static Dictionary<OrderLine, Slotting> GetSlottings(this List<OrderLine> orderLines, List<Slotting> slottings) =>
+			orderLines
+				.Where(ol => slottings.Contains(ol.Sku.InventoryId))						// Find Order Lines With Slotting
+				.ToDictionary(ol => ol, ol => slottings.FindFirst(ol.Sku.InventoryId));		// Convert to Dictionary		
+
+		public static IEnumerable<Package> GetDistinctPackages( this List<OrderLine> orderLines)
+		{
+			// Linq Distinct() Method does not take a lambda. Use GroupBy instead.
+
+			return orderLines
+				.Select(ol => ol.Sku.Package)
+				.GroupBy(
+					p => p.PackageId,
+					(key, group) => group.First())
+				.OrderBy(p => p.Priority);
+		}
+
+		public static IEnumerable<OrderLine> GetOrderLinesByInventoryId(this List<OrderLine> orderLines, int inventoryId) =>
+			orderLines
+				.Where(ol => ol.Sku.InventoryId == inventoryId);
+
+		public static IEnumerable<OrderLine> GetRemainingOrderLines(this List<OrderLine> orderLines) =>
+			orderLines
+				.Where(ol => ol.CaseQuantityRemaining > 0);
+
+		public static IEnumerable<OrderLine> GetRemainingOrderLinesByPackageId(this List<OrderLine> orderLines, int packageId) =>
+			orderLines
+				.GetRemainingOrderLines()
+				.Where(ol => ol.Sku.Package.PackageId == packageId);
+
+		public static IEnumerable<OrderLine> GetRemainingOrderLinesByPackageId(this List<OrderLine> orderLines, int packageId, List<Slotting> slottings) =>
+			orderLines.GetRemainingOrderLinesByPackageId(packageId)
+				.Where(ol => slottings.Contains(ol.Sku.InventoryId));
+				
+		public static double CalculatePercentageSkuOfItself(this OrderLine orderLine) =>
+			(double) orderLine.CaseQuantityRemaining / 
+			(double) (orderLine.Sku.Package.CasesPerLayer * orderLine.Sku.Package.LayersPerPallet);
+
+		public static int CalculateNumberOfLayers(this OrderLine orderLine) =>
+			orderLine.CaseQuantityRemaining / orderLine.Sku.Package.CasesPerLayer;
+
 	}
 }

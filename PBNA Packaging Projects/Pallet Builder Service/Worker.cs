@@ -34,7 +34,8 @@ namespace ScientificLogistics.PalletBuilder
 				Console.WriteLine("----------> Loading Orders <----------");
 				Console.WriteLine();
 
-				List<Order> orders = new OrderRepository().GetPrioritizedWorkUnitsForLoc(locationId);
+				List<Order> orders = new OrderRepository()
+					.GetPrioritizedWorkUnitsForLoc(locationId);
 
 				Console.WriteLine($"{orders.Count} Orders Returned for Location ID = {locationId}");
 				Console.WriteLine();

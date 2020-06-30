@@ -240,7 +240,7 @@ namespace ScientificLogistics.PalletBuilder
 
 			if (order != null)
 			{
-				slottings.removeSlottingForDefaultItems(order.DefaultNotification);
+				slottings.RemoveSlottingForDefaultItems(order.DefaultNotification);
 			}
 
 			if (!order.IsStandardPalletOnly)
@@ -271,14 +271,14 @@ namespace ScientificLogistics.PalletBuilder
 			// -------------------------------------------------
 			// (2) Create Single Package Full Layer Full Pallets
 			// -------------------------------------------------
-			// count = createSinglePkgFullLayerPallets(bulkOrder, pallets, Slotting, 1, 0)
+			count = CreateSinglePackageFullLayerPallets(order, pallets, slottings, buildToPct: 100, overflow: 0);
 
 
 
 			// ------------------------------------------------
 			// (3) Create Multi Package Full Layer Full Pallets
 			// ------------------------------------------------
-			// count = createMultiPkgFullLayerPallets(bulkOrder, pallets, Slotting)
+			count = CreateMultiPkgFullLayerPallets(order, pallets, slottings);
 
 
 
@@ -390,6 +390,426 @@ namespace ScientificLogistics.PalletBuilder
 
 			return pallets;
 		}
+
+		// ---
+
+		private int CreateFullPallets(Order order, List<Pallet> pallets)
+		{
+
+			// logger.info(("Entering Create Full Pallets for order => " + order.getOrdId))
+
+			List<OrderLine> orderLines = order.OrderLines;
+			
+			int palletCount = 0;
+			int numPallets;
+
+			foreach (OrderLine orderLine in orderLines)
+			{
+				Item sku = orderLine.Sku;
+
+				numPallets = this.CalculateNumberOfFullPallets(
+					orderLine.CaseQuantityRemaining, 
+					sku.FpFullPalletQuantity);
+				
+				int i = 0;
+				
+				while (i < numPallets)
+				{
+					Pallet pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
+					{
+						PalletNumber = pallets.Count + 1,
+						PalletType = PalletType.SingleSkuFullPallet
+					};
+
+
+					// --------------------------------
+					// Create slotting object on the fly
+					// --------------------------------
+					var fullPalletSlotting = new Slotting();
+					var fullPalletOrderSourcingMatrix = new OrderSourcingMatrix();
+
+					foreach (OrderSourcingMatrix orderSourcingMatrix in order.OrderSourcingMatrices)
+					{
+						if(orderSourcingMatrix.PickMethodCode == PickMethodCode.FullPallet)
+						{
+							fullPalletOrderSourcingMatrix = orderSourcingMatrix;
+							break;
+						}
+					}
+
+					fullPalletSlotting.BuildLocationId = fullPalletOrderSourcingMatrix.BuildLocationId;
+					fullPalletSlotting.BuildDate = order.BuildDate;
+					fullPalletSlotting.PickMethodCode = PickMethodCode.FullPallet;
+					
+					fullPalletSlotting.PickZoneCode = STARTER_PALLET_TYPE_CODES.Contains(sku?.PalletTypeCode ?? "") ?
+						BuildMethodCode.STRT :
+						BuildMethodCode.FULL;
+
+					fullPalletSlotting.PickAreaCode = "---";
+
+					// ---------------------------------
+					// End of on-they-fly slotting object
+					// ---------------------------------
+
+					bool success = pallet.AddItemToPalletWithoutCheck(
+						order, 
+						orderLine, 
+						sku.FpFullPalletQuantity, 
+						fullPalletSlotting);
+					
+					if (success)
+					{
+						pallets.Add(pallet);
+						orderLine.CaseQuantityRemaining -= sku.FpFullPalletQuantity;
+						palletCount += 1;
+					}
+
+					i += 1;
+				}
+
+				Console.WriteLine($"\t - OrderLine {orderLine.OrderLineId} Produced {numPallets} Pallets " +
+					$"({orderLine.Sku.FpFullPalletQuantity * numPallets} Cases Palletized, {orderLine.CaseQuantityRemaining} Cases Remain, Pkg ID = {orderLine.Sku.Package.PackageId}, " +
+					$"Inv ID = {orderLine.Sku.InventoryId})");
+
+			}
+
+			return palletCount;
+		}
+
+		// ---
+
+		public int CreateSinglePackageFullLayerPallets(Order order, List<Pallet> pallets, List<Slotting> slottings, double buildToPct, double overflow)
+		{
+			int nextPalletNumber = pallets.Count + 1;
+
+
+			// Find Packages and Slottings
+
+			List<Package> packages = order
+				.OrderLines
+				.GetDistinctPackages()
+				.ToList(); 
+			
+			List<Slotting> fullLayerSlottings = slottings.FindAll(PickMethodCode.FullLayer);
+
+
+			// Get Slotting data where items are exclusive to a cell
+
+			SortedDictionary<int, List<Slotting>> slottingByCell = fullLayerSlottings.GroupByCell();
+			Dictionary<int, List<Slotting>> exclusiveSlotting = slottings.GroupByCellExclusive();
+
+			List<Pallet> newPallets = CreateSinglePkgFullLayerPallets(order, packages, exclusiveSlotting, buildToPct, overflow, nextPalletNumber);
+			int palletCount = newPallets.Count;
+			pallets.AddRange(newPallets);
+			nextPalletNumber = pallets.Count + 1;
+
+
+			// ----------------------------
+			// Creating pallets in one cell
+			// ----------------------------
+
+			newPallets = CreateSinglePkgFullLayerPallets(order, packages, slottingByCell, buildToPct, overflow, nextPalletNumber);
+
+			palletCount += newPallets.Count;
+			pallets.AddRange(newPallets);
+			nextPalletNumber = pallets.Count + 1;
+
+			SortedDictionary<int, List<Slotting>> allSlotting = new SortedDictionary<int, List<Slotting>>
+			{
+				{ 0, fullLayerSlottings }
+			};
+
+
+			// ------------------------------
+			// Creating pallets from any cell
+			// ------------------------------
+
+			newPallets = CreateSinglePkgFullLayerPallets(order, packages, allSlotting, buildToPct, overflow, nextPalletNumber);
+
+			palletCount += newPallets.Count;
+			pallets.AddRange(newPallets);
+
+			return palletCount;
+		}
+
+		private List<Pallet> CreateSinglePkgFullLayerPallets(
+			Order order, List<Package> packages, 
+			IDictionary<int, List<Slotting>> slottingByCellDictionary, 
+			double buildToPercentage, double overflow, int nextPalletNumber)
+		{
+			List<Pallet> pallets = new List<Pallet>();
+
+			foreach (Package package in packages)
+			{
+				// Order Lines To Process
+
+				List<OrderLine> orderLines = order.OrderLines
+					.GetRemainingOrderLinesByPackageId(package.PackageId)
+					.ToList();
+
+
+				// Process Cells
+
+				foreach (int cellNumber in slottingByCellDictionary.Keys)
+				{
+					// Figure out the Order Lines that are contained in the cell
+					// Order lines are returned sorted by pick sequence
+
+					List<Slotting> slottingForCell = slottingByCellDictionary[cellNumber];
+
+					Dictionary<OrderLine, Slotting> inCell = orderLines.GetSlottings(slottingForCell);
+
+
+					if (inCell.Count > 0)
+					{
+						// Figure out how many layers there are for this package
+
+						int numLayers = inCell.Keys
+							.Sum(ol => ol.CaseQuantityRemaining / ol.Sku.Package.CasesPerLayer);
+
+
+						var orderLine = inCell.Keys.First();
+						
+						int casesPerLayer = orderLine.Sku.Package.CasesPerLayer;
+						int layersPerPallet = orderLine.Sku.Package.LayersPerPallet;
+
+						if ((buildToPercentage + overflow) != 100)
+						{
+							layersPerPallet = (int)Math.Ceiling(layersPerPallet * (buildToPercentage + overflow));
+						}
+
+						// Calculate how many Full Layer Full Pallets can be made
+						
+						int numberOfPallets = numLayers / layersPerPallet;
+
+						if (numberOfPallets > 0)
+						{
+							int palletCount = 0;
+							bool maxPalletsReached = false;
+
+							// Create Pallets.
+
+							Pallet pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
+							{
+								PalletNumber = nextPalletNumber,
+								PalletType = PalletType.SinglePackageFullPallet
+
+							};
+							
+							nextPalletNumber += 1;
+
+							List<OrderLine> orderLinesInCell = order.OrderLines
+								.GetRemainingOrderLinesByPackageId(package.PackageId, slottingForCell)
+								.ToList();
+							
+							List<OrderLine> orderLinesToAdd = GetItemsToFillFullLayerPallet(orderLinesInCell, slottingForCell, layersPerPallet);
+							
+							int numLayersAdded = 0;
+							
+							while (orderLinesToAdd.Count > 0 && !maxPalletsReached)
+							{
+								foreach (OrderLine orderLineToAdd in orderLinesToAdd)
+								{
+									Slotting slot = inCell[orderLineToAdd];
+
+									while (orderLineToAdd.CaseQuantityRemaining >= casesPerLayer && !maxPalletsReached)
+									{
+										bool success = pallet.AddItemToPalletWithoutCheck(order, orderLineToAdd, casesPerLayer, slot);
+
+										if (success)
+										{
+											Decrement(orderLineToAdd, casesPerLayer);
+
+											numLayersAdded += 1;
+											pallet.NextLayerNumber += 1;
+										}
+
+										if (numLayersAdded.Equals(layersPerPallet))
+										{
+											pallets.Add(pallet);
+											palletCount += 1;
+
+											if (palletCount < numberOfPallets)
+											{
+												pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
+												{
+													PalletNumber = nextPalletNumber,
+													PalletType = PalletType.SinglePackageFullPallet
+												};
+
+												nextPalletNumber += 1;
+												numLayersAdded = 0;
+											}
+											else
+											{
+												maxPalletsReached = true;
+											}
+										}
+									}
+
+									if (maxPalletsReached)
+									{
+										break;
+									}
+								}
+
+								orderLinesInCell = order.OrderLines
+									.GetRemainingOrderLinesByPackageId(package.PackageId, slottingForCell)
+									.ToList();
+								
+								orderLinesToAdd = GetItemsToFillFullLayerPallet(
+									orderLinesInCell, 
+									slottingForCell, 
+									layersPerPallet);
+							}
+						}
+					}
+				}
+			}
+
+			return pallets;
+		}
+
+		// ---
+
+		private int CreateMultiPkgFullLayerPallets( Order order, List<Pallet> pallets, List<Slotting> slottings)
+		{
+			int count = 0;
+			int nextPalletNumber = pallets.Count + 1;
+			
+			List<Pallet> newPallets = new List<Pallet>();
+
+			double fullPalletMax = order.PrimaryBuildLocation.FullPalletMaxPercentage;
+			double maxOverflow = order.PrimaryBuildLocation.MaximumOverflow;
+
+			List<Slotting> fullLayerSlotting = slottings.FindAll(PickMethodCode.FullLayer);
+
+
+			//Get slotting by cell, and exclusive to a cell
+
+			SortedDictionary<int, List<Slotting>> slottingByCell = fullLayerSlotting.GroupByCell();
+			Dictionary<int, List<Slotting>> exclusiveSlotting = fullLayerSlotting.GroupByCellExclusive();
+
+			// ---
+
+			List<Pallet> fullLayerPallets = new List<Pallet>();
+			
+			fullLayerPallets = CreateMultiPkgFullLayerPallets(
+				order, 
+				order.OrderLines.GetRemainingOrderLines().ToList(), 
+				exclusiveSlotting, 
+				fullPalletMax, 
+				maxOverflow, 
+				nextPalletNumber);
+
+			newPallets.AddRange(fullLayerPallets);
+			nextPalletNumber += fullLayerPallets.Count;
+			fullLayerPallets.Clear();
+
+
+			fullLayerPallets = CreateMultiPkgFullLayerPallets(
+				order, 
+				order.OrderLines.GetRemainingOrderLines().ToList(), 
+				slottingByCell, 
+				fullPalletMax, 
+				maxOverflow, 
+				nextPalletNumber);
+
+			newPallets.AddRange(fullLayerPallets);
+
+			count = newPallets.Count;
+			pallets.AddRange(newPallets);
+			
+			return count;
+		}
+
+		private List<Pallet> CreateMultiPkgFullLayerPallets(Order order, List<OrderLine> orderLines, IDictionary<int, List<Slotting>> slottingDictionary, 
+			double buildToPercentage, double overflow, int nextPalletNumber)
+		{
+			List<Pallet> newPallets = new List<Pallet>();
+			
+			int maxUnstablePkgs = order.PrimaryBuildLocation.MaximumUnstableQuantity;
+			double maxUnstablePct = order.PrimaryBuildLocation.MaximumUnstablePercentage;
+
+			if (orderLines.Count > 0)
+			{
+
+				//For each cell
+				foreach (int cellNumber in slottingDictionary.Keys)
+				{
+					List<Slotting> slottingForCell = slottingDictionary[cellNumber];
+
+					List<Package> packages = orderLines
+						.GetDistinctPackages()
+						.Reverse()
+						.ToList();
+
+					Pallet pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
+					{
+						PalletNumber = nextPalletNumber,
+						PalletType = PalletType.SinglePackageFullPallet
+					};
+					
+					nextPalletNumber++;
+
+
+					foreach (Package package in packages)
+					{
+						List<OrderLine> packageOrderLines = order
+							.OrderLines
+							.GetRemainingOrderLinesByPackageId(package.PackageId)
+							.ToList();
+
+						Dictionary<OrderLine, Slotting> inCell = packageOrderLines.GetSlottings(slottingForCell);
+
+						foreach(KeyValuePair<OrderLine, Slotting> entry in inCell)
+						{
+							OrderLine orderLine = entry.Key;
+							Slotting slot = entry.Value;
+
+							while (orderLine.CaseQuantityRemaining >= orderLine.Sku.Package.CasesPerLayer)
+							{
+								bool success = pallet.AddItemToPallet(order, orderLine, orderLine.Sku.Package.CasesPerLayer,
+										slot, buildToPercentage,
+										overflow, true, false, maxUnstablePkgs, maxUnstablePct);
+
+								if (success)
+								{
+									Decrement(orderLine, orderLine.Sku.Package.CasesPerLayer);
+									pallet.NextLayerNumber += 1;
+								}
+								else
+								{
+									// Start new pallet
+									pallet.ReverseLayers();
+									newPallets.Add(pallet);
+
+									pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
+									{
+										PalletNumber = nextPalletNumber,
+										PalletType = PalletType.SinglePackageFullPallet
+									};
+									
+									nextPalletNumber++;
+								}
+							}
+						}
+					}
+
+					if (pallet.GetPercentageFull() < buildToPercentage)
+					{
+						//Pallet is not full.  Undo it.
+						
+						pallet.Dismantle(order);
+						nextPalletNumber--;
+					}
+				}
+			}
+
+			return newPallets;
+		}
+
+		// ---
 
 		private Dictionary<string, List<OrderLine>> CheckAndCombineItemInfo(int locationId, bool initialUseDefaultPallet, Order order, List<Rule> rules)
 		{
@@ -532,89 +952,6 @@ namespace ScientificLogistics.PalletBuilder
 			return errInvenMap;
 		}
 
-		private int CreateFullPallets(Order order, List<Pallet> pallets)
-		{
-
-			// logger.info(("Entering Create Full Pallets for order => " + order.getOrdId))
-
-			List<OrderLine> orderLines = order.OrderLines;
-			
-			int palletCount = 0;
-			int numPallets;
-
-			foreach (OrderLine orderLine in orderLines)
-			{
-				Item sku = orderLine.Sku;
-
-				numPallets = this.CalculateNumberOfFullPallets(
-					orderLine.CaseQuantityRemaining, 
-					sku.FpFullPalletQuantity);
-				
-				int i = 0;
-				
-				while (i < numPallets)
-				{
-					Pallet pallet = new Pallet(order.PrimaryBuildLocation.DefaultPallet)
-					{
-						PalletNumber = pallets.Count + 1,
-						PalletType = PalletType.SingleSkuFullPallet
-					};
-
-
-					// --------------------------------
-					// Create slotting object on the fly
-					// --------------------------------
-					var fullPalletSlotting = new Slotting();
-					var fullPalletOrderSourcingMatrix = new OrderSourcingMatrix();
-
-					foreach (OrderSourcingMatrix orderSourcingMatrix in order.OrderSourcingMatrices)
-					{
-						if(orderSourcingMatrix.PickMethodCode == PickMethodCode.FullPallet)
-						{
-							fullPalletOrderSourcingMatrix = orderSourcingMatrix;
-							break;
-						}
-					}
-
-					fullPalletSlotting.BuildLocationId = fullPalletOrderSourcingMatrix.BuildLocationId;
-					fullPalletSlotting.BuildDate = order.BuildDate;
-					fullPalletSlotting.PickMethodCode = PickMethodCode.FullPallet;
-					
-					fullPalletSlotting.PickZoneCode = STARTER_PALLET_TYPE_CODES.Contains(sku?.PalletTypeCode ?? "") ?
-						BuildMethodCode.STRT :
-						BuildMethodCode.FULL;
-
-					fullPalletSlotting.PickAreaCode = "---";
-
-					// ---------------------------------
-					// End of on-they-fly slotting object
-					// ---------------------------------
-
-					bool success = pallet.AddItemToPalletWithoutCheck(
-						order, 
-						orderLine, 
-						sku.FpFullPalletQuantity, 
-						fullPalletSlotting);
-					
-					if (success)
-					{
-						pallets.Add(pallet);
-						orderLine.CaseQuantityRemaining -= sku.FpFullPalletQuantity;
-						palletCount += 1;
-					}
-
-					i += 1;
-				}
-
-				Console.WriteLine($"\t - OrderLine {orderLine.OrderLineId} Produced {numPallets} Pallets " +
-					$"({orderLine.Sku.FpFullPalletQuantity * numPallets} Cases Palletized, {orderLine.CaseQuantityRemaining} Cases Remain, Pkg ID = {orderLine.Sku.Package.PackageId}, " +
-					$"Inv ID = {orderLine.Sku.InventoryId})");
-
-			}
-
-			return palletCount;
-		}
-
 		private int CalculateNumberOfFullPallets(int caseQuantity, int fullPalletQuantity)
 		{
 			return caseQuantity / fullPalletQuantity;
@@ -632,9 +969,9 @@ namespace ScientificLogistics.PalletBuilder
 			}
 			else
 			{
-				masterLoc.FullPalletMaxPct = (comboLoc.FullPalletMaxPct);
+				masterLoc.FullPalletMaxPercentage = (comboLoc.FullPalletMaxPercentage);
 				masterLoc.MaximumOverflow = comboLoc.MaximumOverflow;
-				masterLoc.MaximumUnstablePct = comboLoc.MaximumUnstablePct;
+				masterLoc.MaximumUnstablePercentage = comboLoc.MaximumUnstablePercentage;
 				masterLoc.MaximumUnstableQuantity = comboLoc.MaximumUnstableQuantity;
 				masterLoc.IsApb = comboLoc.IsApb;
 			}
@@ -663,7 +1000,7 @@ namespace ScientificLogistics.PalletBuilder
 					order.PrimaryBuildLocation.LocationId, 
 					order.BuildDate);
 			}
-			 		
+					
 	}
 
 		public void CheckOrderAgainstSlotting(Order order, List<Slotting> slotting, int eachesLocationId, int chilledLocationId)
@@ -681,6 +1018,128 @@ namespace ScientificLogistics.PalletBuilder
 							Slotting.getDefaultForEaches(eachesLocationId, orderLine.Sku.InventoryId, order));
 				}
 			}
+		}
+
+		public int Decrement(OrderLine orderLine, int casesToDec)
+		{
+			if (orderLine.CaseQuantityRemaining >= casesToDec)
+			{
+				orderLine.CaseQuantityRemaining -= casesToDec;
+				casesToDec = 0;
+			}
+			else
+			{
+				casesToDec -= orderLine.CaseQuantityRemaining;
+				orderLine.CaseQuantityRemaining = 0;
+			}
+
+			return casesToDec;
+		}
+
+		private List<OrderLine> GetItemsToFillFullLayerPallet(List<OrderLine> packageOrderLines, List<Slotting> slottings, int layersRemaining)
+		{
+			List<OrderLine> ordLinesToFillPallet = new List<OrderLine>();
+
+			if (packageOrderLines.Count != 0)
+			{
+				//Try to find a SKU that will fill the layer pallet
+
+				foreach (OrderLine packageOrderLine in packageOrderLines)
+				{
+					if (slottings.Contains(packageOrderLine.Sku.InventoryId) &&
+						packageOrderLine.CalculateNumberOfLayers() == layersRemaining)
+					{
+						ordLinesToFillPallet.Add(packageOrderLine);
+						return ordLinesToFillPallet;
+					}
+				}
+
+
+				//Try to find a combo of 2 SKUs that will fill the layer pallet
+
+				for (int i = 0; i < packageOrderLines.Count; i++)
+				{
+					OrderLine packageOrderLine = packageOrderLines[i];
+
+					if (slottings.Contains(packageOrderLine.Sku.InventoryId))
+					{
+						for (int j = i; j < packageOrderLines.Count; j++)
+						{
+							OrderLine packageOrderLine2 = packageOrderLines[j];
+
+							if (slottings.Contains(packageOrderLine.Sku.InventoryId))
+							{
+								int combinedLayers = 
+									packageOrderLine.CalculateNumberOfLayers() + 
+									packageOrderLine2.CalculateNumberOfLayers();
+
+								if (combinedLayers == layersRemaining)
+								{
+									ordLinesToFillPallet.Add(packageOrderLine);
+									ordLinesToFillPallet.Add(packageOrderLine2);
+
+									return ordLinesToFillPallet;
+								}
+							}
+						}
+					}
+				}
+
+
+				//Try to find a combo of 3 SKUs that will fill the layer pallet
+
+				for (int i = 0; i < packageOrderLines.Count; i++)
+				{
+					OrderLine packageOrderLine = packageOrderLines[i];
+
+					if (slottings.Contains(packageOrderLine.Sku.InventoryId))
+					{
+						for (int j = i; j < packageOrderLines.Count; j++)
+						{
+							OrderLine packageOrderLine2 = packageOrderLines[j];
+
+							if (slottings.Contains(packageOrderLine2.Sku.InventoryId))
+							{
+								for (int k = j; k < packageOrderLines.Count; k++)
+								{
+									OrderLine packageOrderLine3 = packageOrderLines[k];
+
+									if (slottings.Contains(packageOrderLine3.Sku.InventoryId))
+									{
+										int combinedLayers =
+											packageOrderLine.CalculateNumberOfLayers() +
+											packageOrderLine2.CalculateNumberOfLayers();
+											packageOrderLine3.CalculateNumberOfLayers();
+
+										if (combinedLayers == layersRemaining)
+										{
+											ordLinesToFillPallet.Add(packageOrderLine);
+											ordLinesToFillPallet.Add(packageOrderLine2);
+											ordLinesToFillPallet.Add(packageOrderLine3);
+
+											return ordLinesToFillPallet;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+
+				//If no combo is found just return the biggest one
+
+				OrderLine orderlineWithLargestPercentSkuOfItself = packageOrderLines
+					.OrderByDescending(ol => ol.CalculatePercentageSkuOfItself())
+					.First();
+
+				ordLinesToFillPallet.Add(orderlineWithLargestPercentSkuOfItself);
+
+				return ordLinesToFillPallet;
+			}
+
+			return ordLinesToFillPallet;
+
 		}
 
 		#endregion

@@ -26,10 +26,10 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public List<Rule> Rules { get; set; }
 
-		public double FullPalletMaxPct { get; set; }
+		public double FullPalletMaxPercentage { get; set; }
 
 		public double MaximumOverflow { get; set; }
-		public double MaximumUnstablePct { get; set; }
+		public double MaximumUnstablePercentage { get; set; }
 		public int MaximumUnstableQuantity { get; set; }
 
 		public int StandardPalletId { get; set; }
