@@ -7,6 +7,56 @@ namespace ScientificLogistics.PalletBuilder.Core
 {
 	public static class SlottingExtensions
 	{
+
+		public static List<List<Slotting>> GetSlottingBySideList(this List<Slotting> slotting)
+		{
+			//this will return a list of list of slotting objects
+			//first item in the list is the smallest side , next one bigger and so on
+			Dictionary<string, List<Slotting>> slottingBySide = new Dictionary<string, List<Slotting>>();
+			List<List<Slotting>> slottingLists = new List<List<Slotting>>();
+			
+			foreach (Slotting slot in slotting)
+			{
+				String side = slot.SideCode;
+				List<Slotting> slottingList;
+
+				if (slottingBySide.ContainsKey(side))
+				{
+					slottingList = slottingBySide[side];
+				}
+				else
+				{
+					slottingList = new List<Slotting>();
+				}
+
+				slottingList.Add(slot);
+				slottingBySide[side] = slottingList;
+			}
+
+			//SortedDictionary<string, int> slottingBySideToSort = new SortedDictionary<string, int>();
+
+			//foreach (KeyValuePair<string, List<Slotting>> entry in slottingBySide)
+			//{
+			//	slottingBySideToSort[entry.Key] = entry.Value.Count;
+			//}
+
+			//List<KeyValuePair<string, int>> sortedList = new List<KeyValuePair<string, int>>(slottingBySideToSort.entrySet());
+			//Collections.sort(sortedList, new MapEntryComparatorObjInt());
+
+			//for (Map.Entry<Object, Integer> entry : sortedList)
+			//{
+			//	slottingLists.add(slottingBySide.get(entry.getKey()));
+			//}
+
+			return slottingBySide
+				.OrderBy(kvp => kvp.Value.Count)
+				.Select(kvp => kvp.Value)
+				.ToList();
+		}
+
+
+		// ---
+
 		public static Slotting FindFirst(this List<Slotting> slottings, int inventoryId) =>
 			slottings.FirstOrDefault(s => s.InventoryId == inventoryId);
 

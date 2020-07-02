@@ -1,4 +1,6 @@
-﻿using ScientificLogistics.PalletBuilder.Core;
+﻿using Microsoft.VisualBasic;
+
+using ScientificLogistics.PalletBuilder.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -285,7 +287,8 @@ namespace ScientificLogistics.PalletBuilder
 			// ----------------------------------
 			// (4) Create Single Package  Pallets
 			// ----------------------------------
-			// makeSinglePackagePallets(bulkOrder, pallets, slotting, bulkOrder.getPrimaryBuild.getFullPalMaxPct, bulkOrder.getPrimaryBuild.getMaxOverflow)
+			MakeSinglePackagePallets(order, pallets, slottings, order.PrimaryBuildLocation.FullPalletMaxPercentage,
+				order.PrimaryBuildLocation.MaximumOverflow);
 
 
 			// ---------------------------------------------------
@@ -811,6 +814,125 @@ namespace ScientificLogistics.PalletBuilder
 
 		// ---
 
+
+		public void MakeSinglePackagePallets(Order order, List<Pallet> buildPallets, List<Slotting> slotting, double buildTo,
+											  double overflow)
+		{
+			List<Package> packages = order
+				.OrderLines
+				.GetDistinctPackages()
+				.ToList();
+
+			double palletAverage = 
+				order.OrderLines.CalculateTotalPercentageSkuOfItself() / 
+				Math.Ceiling(order.OrderLines.CalculateTotalPercentageSkuOfItself() / buildTo);
+
+			List<Slotting> fullLayerSlotting = slotting.FindAll(PickMethodCode.FullLayer);
+			List<Slotting> mixedLayerSlotting = slotting.FindAll(PickMethodCode.MixedLayer);
+			List<Slotting> eachesSlotting = slotting.FindAll(PickMethodCode.Eaches);
+
+			List<Unstackable> unstackables = order.PrimaryBuildLocation.Unstackables;
+
+			foreach (Package aPackage in packages)
+			{
+				if(!unstackables.Any(u => u.BottomPackageId == aPackage.PackageId))
+				{
+					continue;
+				}
+
+				List<OrderLine> packageOrdLines = order
+					.OrderLines
+					.GetByPackageId(aPackage.PackageId)
+					.ToList();
+
+				if (packageOrdLines.CalculateTotalPercentageSkuOfItself() >= palletAverage)
+				{
+					List<Pallet> partialPalletList = new List<Pallet>();
+					List<Pallet> fullPalletList = new List<Pallet>();
+
+					Pallet pallet = new Pallet()
+					{
+						PalletNumber = buildPallets.Count + 1
+					};
+
+
+					if (fullLayerSlotting.Count != 0)
+					{
+						PutFullLayersOnPallet(
+							order, 
+							packageOrdLines, 
+							fullLayerSlotting, 
+							pallet, 
+							buildTo, 
+							overflow, 
+							0,			// Max Unstable Packages
+							0.0);		// Max Unstable Percentage
+					}
+
+					partialPalletList.Add(pallet);
+
+					if (mixedLayerSlotting.Count != 0)
+					{
+						packageOrdLines = packageOrdLines
+							.GetBySlotting(mixedLayerSlotting)
+							.ToList();
+
+						if (packageOrdLines != null)
+						{
+							MakeMixedLayers(
+								order, 
+								packageOrdLines, 
+								aPackage, 
+								mixedLayerSlotting, 
+								fullPalletList, 
+								partialPalletList, 
+								buildTo, 
+								overflow, 
+								true);			// AddFullToParLst
+						}
+					}
+
+					foreach (Pallet fullPallet in fullPalletList)
+					{
+						if (fullPallet.PalletNumber < 0)
+						{
+							fullPallet.PalletNumber = buildPallets.Count + 1;
+						}
+
+						buildPallets.Add(fullPallet);
+					}
+
+					ReuniteEaches(order, eachesSlotting, partialPalletList, buildTo, overflow);
+					
+					foreach (Pallet partialPallet in partialPalletList) 
+					{
+						int automatedLayerCount = partialPallet.Layers
+							.Count(l => BuildMethod.IsAutoBuild(l.Zone));
+
+						if (automatedLayerCount < order.PrimaryBuildLocation.MinimumLayerAutomation ||
+							partialPallet.GetPercentageFull() < palletAverage) 
+						{
+							
+							partialPallet.Dismantle(order);
+						} 
+						else 
+						{
+							if (partialPallet.PalletNumber < 0)
+							{
+								partialPallet.PalletNumber = buildPallets.Count + 1;
+							}
+
+							buildPallets.Add(partialPallet);
+						}
+					}
+				}
+			}
+		}
+
+
+
+		// ---
+
 		private Dictionary<string, List<OrderLine>> CheckAndCombineItemInfo(int locationId, bool initialUseDefaultPallet, Order order, List<Rule> rules)
 		{
 			bool isStandardPalletOnly = order.IsStandardPalletOnly;
@@ -1141,6 +1263,308 @@ namespace ScientificLogistics.PalletBuilder
 			return ordLinesToFillPallet;
 
 		}
+
+		private void PutFullLayersOnPallet(Order order, List<OrderLine> pkgOrdLines, List<Slotting> slotting, 
+			Pallet pallet, Double buildToPct, Double overflow, int maxUnstablePkgs, Double maxUnstablePct)
+		{
+			Dictionary<OrderLine, Slotting> inCell = pkgOrdLines.GetItemsInSlotting(slotting);
+				//slotting.GetItemsInSlotting(pkgOrdLines, slotting);
+
+			foreach (KeyValuePair<OrderLine, Slotting> entry in inCell)
+			{
+				OrderLine orderLine = entry.Key;
+				Slotting slot = entry.Value;
+
+				while (orderLine.CaseQuantityRemaining >= orderLine.Sku.Package.CasesPerLayer)
+				{
+					bool success = pallet.AddItemToPallet(order, orderLine, orderLine.Sku.Package.CasesPerLayer,
+							slot, buildToPct, overflow,
+							true, false, maxUnstablePkgs, maxUnstablePct);
+
+					if (success)
+					{
+						Decrement(orderLine, orderLine.Sku.Package.CasesPerLayer);
+						pallet.NextLayerNumber += 1;
+					}
+					else
+					{
+						break;
+					}
+				}
+			}
+		}
+
+		private void MakeMixedLayers(Order ord, List<OrderLine> pkgOrdLineList,
+			Package pkg, List<Slotting> allSlotting, List<Pallet> fullPltLst,
+			List<Pallet> partialPltLst, Double buildToPct, Double overFlow, bool addFullToParLst)
+		{
+			int currentLayerQty = 0;
+
+			pkgOrdLineList.Sort(new OrderLineComparatorMXLP());
+
+			List<List<Slotting>> sidewiseSlotting = allSlotting.GetSlottingBySideList();
+			List<int> currentOLQtys = new List<int>();
+			List<OrderLine> currentLayerOLs = new List<OrderLine>();
+
+			for (int i = 0; i < pkgOrdLineList.Count; i++)
+			{
+				OrderLine ol = pkgOrdLineList[i];
+
+				if (ol.CaseQuantityRemaining + currentLayerQty >= pkg.CasesPerLayer)
+				{
+					// can make singlesku mixedlayer
+					while (ol.CaseQuantityRemaining + currentLayerQty >= pkg.CasesPerLayer)
+					{
+						currentOLQtys.Add(pkg.CasesPerLayer - currentLayerQty);
+						currentLayerOLs.Add(ol);
+						MakePallet(fullPltLst, currentLayerOLs,
+								currentOLQtys, ord, sidewiseSlotting, pkg,
+								partialPltLst, buildToPct, overFlow, addFullToParLst);
+						currentLayerQty = 0;
+					}
+
+					if (ol.CaseQuantityRemaining > 0)
+					{
+						currentLayerQty += ol.CaseQuantityRemaining;
+						currentOLQtys.Add(ol.CaseQuantityRemaining);
+						currentLayerOLs.Add(ol);
+					}
+				}
+				else
+				{
+					if ((ol.CaseQuantityRemaining + currentLayerQty) >= pkg.CasesPerLayer)
+					{
+						currentOLQtys.Add(pkg.CasesPerLayer - currentLayerQty);
+						currentLayerQty += pkg.CasesPerLayer - currentLayerQty;
+						currentLayerOLs.Add(ol);
+						MakePallet(fullPltLst, currentLayerOLs,
+								currentOLQtys, ord, sidewiseSlotting, pkg,
+								partialPltLst, buildToPct, overFlow, addFullToParLst);
+						currentLayerQty = 0;
+					}
+					else
+					{
+						currentLayerQty += ol.CaseQuantityRemaining;
+						currentLayerOLs.Add(ol);
+						currentOLQtys.Add(ol.CaseQuantityRemaining);
+					}
+				}
+			}
+		}
+
+		private Layer MakeMixedLayer(List<OrderLine> currentLayerOrderLines, List<int> currentLayerQuantity, Order order,
+			List<List<Slotting>> sidewiseSlottings, Package package, int sideIndex)
+		{
+			int i = 0;
+			int rq = 0;
+
+			Layer lyr = null;
+			
+			foreach (int q in currentLayerQuantity)
+			{
+				rq += q;
+			}
+			
+			if (rq == package.CasesPerLayer)
+			{
+				lyr = new Layer(PickMethodCode.MixedLayer, BuildMethodCode.MXLP, package);
+
+				List<Slotting> slots = sidewiseSlottings[sideIndex];
+				
+				foreach (OrderLine ol in currentLayerOrderLines)
+				{
+					Slotting sl = ol.Sku.GetSlotting(slots);
+
+					lyr.AddPalletItem(new PalletItem(order, ol.Sku, currentLayerQuantity[i], sl));
+					ol.CaseQuantityRemaining -= currentLayerQuantity[i];
+					i++;
+				}
+			}
+
+			return lyr;
+		}
+
+		private void MakePallet(List<Pallet> palletList,
+				List<OrderLine> currentLayerOLs, List<int> currentLayerQty,
+				Order ord, List<List<Slotting>> sidewiseSlotting, Package pkg,
+				List<Pallet> partialPltLst, Double buildToPct, Double overFlow, bool addFullToParLst)
+		{
+			int sideIndex = currentLayerOLs.IsSlottedOnSameSide(sidewiseSlotting);
+
+			if (sideIndex >= 0)
+			{
+				Layer lyr = MakeMixedLayer(currentLayerOLs, currentLayerQty, ord,
+					sidewiseSlotting, pkg, sideIndex);
+
+				if (!FindStackablePalletNAddLayer(ord, true, lyr, (List<Pallet>)partialPltLst, palletList, 
+					buildToPct, overFlow, addFullToParLst))
+				{
+					FindStackablePalletNAddLayer(ord, false, lyr, (List<Pallet>)partialPltLst, palletList, 
+						buildToPct, overFlow, addFullToParLst);
+				}
+				currentLayerOLs.Clear();
+				currentLayerQty.Clear();
+			}
+		}
+
+		private bool FindStackablePalletNAddLayer(Order order, bool bestFit, Layer l,
+			List<Pallet> partialPalletList, List<Pallet> palletList,
+			Double buildToPct, Double overFlow, bool addFullToParLst)
+		{
+			bool layrAdded = false;
+			List<Pallet> palletsToRemove = new List<Pallet>();
+
+			for(int palletIndex = 0; palletIndex < partialPalletList.Count; palletIndex += 1)
+			{
+				Pallet pallet = partialPalletList[palletIndex];
+
+				if ((bestFit) && (!pallet.GetPackagesOnPallet().Contains(l.Package.PackageId)))
+				{
+					continue;
+				}
+				if (!pallet.WouldAffectStackability(l))
+				{
+					if (pallet.CanAccomodateLayersOfOnePkg(buildToPct, overFlow, l))
+					{
+						pallet.Layers.Add(l);
+						layrAdded = true;
+						break;
+					}
+					else
+					{
+						if (addFullToParLst)
+						{
+							pallet.PalletType = PalletType.SinglePackageFullPallet;
+							palletList.Add(pallet);
+							palletsToRemove.Add(pallet);
+						}
+					}
+				}
+			}
+
+			foreach(Pallet palletToRemove in palletsToRemove) { partialPalletList.Remove(palletToRemove); }
+
+			if ((!bestFit) && (!layrAdded))
+			{
+				Pallet np = new Pallet(order.PrimaryBuildLocation.DefaultPallet);
+				np.Layers.Add(l);
+				partialPalletList.Add(np);
+				layrAdded = true;
+			}
+
+			return layrAdded;
+		}
+
+		private void ReuniteEaches(Order order, List<Slotting> eachesSlotting, List<Pallet> pallets, Double buildTo, Double overflow)
+		{
+			//Get the remaining order lines
+			List<OrderLine> remainingOrderLines = order.OrderLines
+				.GetRemainingOrderLines()
+				.ToList();
+
+			//Get the packages for the remaining order lines
+			List<Package> pkgs = remainingOrderLines
+				.GetDistinctPackages()
+				.ToList();
+
+			//Loop through the remaining packages trying to place them on a pallet with the same package
+			foreach (Package pkg in pkgs) 
+			{
+				//Find the pallets with this package
+				//List will be sorted by percent full ascending
+				List<Pallet> palletsWithPackage = pallets.GetWithPackage(pkg); 
+				
+				//Make sure there is at least one pallet in the list
+				if (palletsWithPackage.Count != 0) 
+				{
+					//Get the first pallet in the list
+					//If it doesn't fit on here it won't fit on any.
+					Pallet palletToReunite = palletsWithPackage[0];
+
+					//Get the remaining order lines for the current package
+					List<OrderLine> pkgOrdLines = order.OrderLines
+						.GetRemainingOrderLinesByPackageId(pkg.PackageId)
+						.ToList(); ;
+
+					//Check if all the remaining order lines can fit on the pallet.
+					List<Layer> layerList = palletToReunite.Layers;
+					Layer topMostLayer = layerList[layerList.Count - 1];
+					Package topMostLayerPackage = topMostLayer.Package;
+					Unstackable unstackable = CanStack(order.PrimaryBuildLocation, pkg.PackageId, topMostLayerPackage.PackageId);
+					
+					if (topMostLayer.IsAutomated()) 
+					{
+						if ((topMostLayerPackage.PackageId == pkg.PackageId && unstackable != null) || unstackable == null)
+						{
+							if (palletToReunite.CanAdd(pkgOrdLines, buildTo, overflow, false, 0, 0.0)) 
+							{
+								//If they can attempt to add them to the pallet
+								//Disregard stability rules at this point
+								bool success = palletToReunite.AddPackageToPallet(order, pkgOrdLines, eachesSlotting,
+										buildTo, overflow, true, false, 0, 0.0);
+								
+								//If the items were added then decrement their quantity remaining to 0
+								if (success) 
+								{
+									foreach (OrderLine ol in pkgOrdLines) 
+									{
+										Decrement(ol, ol.CaseQuantityRemaining);
+									}
+								}
+							} 
+							else if (pkg.IsUnstackable(order.PrimaryBuildLocation)) 
+							{
+								int numOfCases = palletToReunite.HowManyCasesFit(pkg, buildTo, 0.0);
+								numOfCases = (int)Math.Ceiling(numOfCases / (double)pkg.CasesPerLayer) * pkg.CasesPerLayer;
+								List<OrderLine> ordLinesThatFit = pkgOrdLines.GetCombosForCaseQty(eachesSlotting, numOfCases);
+								
+								bool success = true;
+
+								while (ordLinesThatFit.Count != 0 && success && numOfCases > 0)
+								{
+									success = palletToReunite.AddPackageToPallet(order, ordLinesThatFit, eachesSlotting,
+										   buildTo, 0.0, true, false, 0, 0.0);
+									
+									//If the items were added then decrement their quantity remaining to 0
+									if (success) 
+									{
+										foreach (OrderLine ol in ordLinesThatFit) 
+										{
+											Decrement(ol, ol.CaseQuantityRemaining);
+										}
+									}
+
+									numOfCases = palletToReunite.HowManyCasesFit(pkg, buildTo, 0.0);
+									numOfCases = (int)Math.Ceiling(numOfCases / (double)pkg.CasesPerLayer) * pkg.CasesPerLayer;
+									ordLinesThatFit = pkgOrdLines.GetCombosForCaseQty(eachesSlotting, numOfCases);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		public Unstackable CanStack(Location primaryBuild, int topPkgId, int bottomPkgId)
+		{
+			Unstackable ustck = null;
+			List<Unstackable> unstackables = primaryBuild.Unstackables;
+
+			if (unstackables != null) 
+			{
+				foreach (Unstackable unstackable in unstackables) 
+				{
+					if (unstackable.TopPackageId == topPkgId && unstackable.BottomPackageId == bottomPkgId)
+					{
+						ustck = unstackable;
+						break;
+					}
+				}
+			}
+
+			return ustck;
+		}
+
 
 		#endregion
 	}

@@ -55,7 +55,6 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		#endregion
 
-
 		#region -- Private Properties --
 
 		// --- For Dapper SQL ---
@@ -135,6 +134,23 @@ namespace ScientificLogistics.PalletBuilder.Core
 			Package.ContCode = item.Package.ContCode;
 
 			Brand = item.Brand;
+		}
+
+		#endregion
+
+
+		#region -- Public Methods --
+
+		public Slotting GetSlotting(List<Slotting> slotting)
+		{
+			foreach (Slotting slot in slotting)
+			{
+				if (this.InventoryId == slot.InventoryId)
+				{
+					return slot;
+				}
+			}
+			return null;
 		}
 
 		#endregion

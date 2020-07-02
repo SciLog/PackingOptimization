@@ -6,6 +6,10 @@ namespace ScientificLogistics.PalletBuilder.Core
 {
 	public class Location
 	{
+		private List<Unstackable> _unstackables = null;
+
+		// -----
+
 		public int LocationId { get; set; }
 
 		public string Name { get; set; }
@@ -53,7 +57,7 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public Item DefaultPallet { get; set; } = new Item();
 
-		public int MinimumLayerAtmn { get; set; }
+		public int MinimumLayerAutomation { get; set; }
 
 		public double DBayTruckMinimumFillPct { get; set; }
 
@@ -87,6 +91,22 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		public bool IsRouteBasedDeliveryEnable { get; set; }
 
+		// ---
+
+
+		public List<Unstackable> Unstackables
+		{
+			get
+			{
+				if(_unstackables is null)
+				{
+					_unstackables = new UnstackableRepository().GetForLocation(LocationId);
+				}
+
+				return _unstackables;
+			}
+		}
+
 		
 
 		private int DefaultPalletInventoryId
@@ -105,5 +125,8 @@ namespace ScientificLogistics.PalletBuilder.Core
 		{
 			set { DefaultPallet.Length = value; }
 		}
+
+
+
 	}
 }

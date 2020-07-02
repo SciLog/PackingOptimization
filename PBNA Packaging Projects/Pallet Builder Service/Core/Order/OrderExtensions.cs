@@ -8,6 +8,79 @@ namespace ScientificLogistics.PalletBuilder.Core
 {
 	public static class OrderExtensions
 	{
+		public static Dictionary<OrderLine, Slotting> GetItemsInSlotting(this List<OrderLine> orderLines, List<Slotting> slottings)
+		{
+			//Figure out the Order Lines that are contained in the cell
+			Dictionary<OrderLine, Slotting> inCell = new Dictionary<OrderLine, Slotting>();
+
+			//List<OrderLine> inCell = new ArrayList<OrderLine>();
+			foreach (OrderLine orderLine in orderLines)
+			{
+				if (slottings.Contains(orderLine.Sku.InventoryId))
+				{
+					inCell.Add(orderLine, slottings.FindFirst(orderLine.Sku.InventoryId));
+				}
+			}
+			//Sort the Map by pick sequence
+			List<KeyValuePair<OrderLine, Slotting>> sortedEntries = new List<KeyValuePair<OrderLine, Slotting>>(inCell);
+			
+			sortedEntries.Sort(new OrderLineSlottingComparator());
+			inCell.Clear();
+			
+			foreach (KeyValuePair<OrderLine, Slotting> entry in sortedEntries)
+			{
+				inCell.Add(entry.Key, entry.Value);
+			}
+
+			return inCell;
+		}
+
+		// ---
+
+		public static int IsSlottedOnSameSide(this List<OrderLine> orderLines, List<List<Slotting>> sidewiseSlotting)
+		{
+			int slottedOnSameSide = -1;
+
+			List<Slotting> superSetSlotting = sidewiseSlotting[1];
+			List<Slotting> subSetSlotting = sidewiseSlotting[0];
+			
+			foreach (OrderLine orderLine in orderLines)
+			{
+				if (orderLine.Sku.GetSlotting(subSetSlotting) == null)
+				{
+					slottedOnSameSide = -1;
+				}
+				else
+				{
+					slottedOnSameSide = 0;
+				}
+				if (slottedOnSameSide < 0)
+				{
+					break;
+				}
+			}
+			if (slottedOnSameSide < 0)
+			{
+				foreach (OrderLine orderLine in orderLines)
+				{
+					if (orderLine.Sku.GetSlotting(superSetSlotting) == null)
+					{
+						slottedOnSameSide = -1;
+					}
+					else
+					{
+						slottedOnSameSide = 1;
+					}
+					if (slottedOnSameSide < 0)
+					{
+						break;
+					}
+				}
+			}
+
+			return slottedOnSameSide;
+		}
+
 		public static Dictionary<string, List<OrderLine>> GetOrderLinesByType(this Order order, List<Rule> rules)
 		{
 			Dictionary<string, List<OrderLine>> orderLineDictionary = new Dictionary<string, List<OrderLine>>();
@@ -76,6 +149,14 @@ namespace ScientificLogistics.PalletBuilder.Core
 			orderLines
 				.Where(ol => ol.Sku.InventoryId == inventoryId);
 
+		public static IEnumerable<OrderLine> GetByPackageId(this List<OrderLine> orderLines, int packageId) =>
+			orderLines
+				.Where(ol => ol.Sku.Package.PackageId == packageId);
+
+		public static IEnumerable<OrderLine> GetBySlotting(this List<OrderLine> orderLines, List<Slotting> slottings) =>
+			orderLines
+				.Where(ol => slottings.Contains(ol.Sku.InventoryId));
+
 		public static IEnumerable<OrderLine> GetRemainingOrderLines(this List<OrderLine> orderLines) =>
 			orderLines
 				.Where(ol => ol.CaseQuantityRemaining > 0);
@@ -93,8 +174,107 @@ namespace ScientificLogistics.PalletBuilder.Core
 			(double) orderLine.CaseQuantityRemaining / 
 			(double) (orderLine.Sku.Package.CasesPerLayer * orderLine.Sku.Package.LayersPerPallet);
 
+		public static double CalculateTotalPercentageSkuOfItself(this List<OrderLine> orderLines) =>
+			orderLines.Sum(ol => ol.CalculatePercentageSkuOfItself());
+
 		public static int CalculateNumberOfLayers(this OrderLine orderLine) =>
 			orderLine.CaseQuantityRemaining / orderLine.Sku.Package.CasesPerLayer;
+
+		// ---
+
+		public static List<OrderLine> GetCombosForCaseQty(this List<OrderLine> packageOrderLines, List<Slotting> slotting, int caseQuantity)
+		{
+			List<OrderLine> itemList = new List<OrderLine>();
+
+			if (packageOrderLines.Count != 0 && (caseQuantity > 0))
+			{
+
+				//Try to find a SKU with a case quantity equal to the remainder from making layers
+				foreach (OrderLine packageOrderLine in packageOrderLines)
+				{
+					if (slotting.Contains(packageOrderLine.Sku.InventoryId) && 
+						packageOrderLine.CaseQuantity == caseQuantity)
+					{
+						itemList.Add(packageOrderLine);
+						return itemList;
+					}
+				}
+
+				//Try to find 2 SKUs with a combined case quantity equal to the remainder from making layers;
+				for (int i = 0; i < packageOrderLines.Count; i++)
+				{
+					OrderLine packageOrderLine = packageOrderLines[i];
+
+					if (slotting.Contains(packageOrderLine.Sku.InventoryId))
+					{
+						for (int j = i + 1; j < packageOrderLines.Count; j++)
+						{
+							OrderLine pkgOrdLine2 = packageOrderLines[j];
+
+							if (slotting.Contains(pkgOrdLine2.Sku.InventoryId))
+							{
+								int combinedQuantity = packageOrderLine.CaseQuantityRemaining + pkgOrdLine2.CaseQuantityRemaining;
+
+								if (combinedQuantity == caseQuantity)
+								{
+									itemList.Add(packageOrderLine);
+									itemList.Add(pkgOrdLine2);
+
+									return itemList;
+								}
+							}
+						}
+					}
+				}
+
+				//Try to find 3 SKUs with a combined case quantity equal to the remainder from making layers
+				for (int i = 0; i < packageOrderLines.Count; i++)
+				{
+					OrderLine packageOrderLine = packageOrderLines[i];
+
+					if (slotting.Contains(packageOrderLine.Sku.InventoryId))
+					{
+						for (int j = i + 1; j < packageOrderLines.Count; j++)
+						{
+							OrderLine pkgOrdLine2 = packageOrderLines[j];
+
+							if (slotting.Contains(pkgOrdLine2.Sku.InventoryId))
+							{
+								for (int k = j + 1; k < packageOrderLines.Count; k++)
+								{
+									OrderLine pkgOrdLine3 = packageOrderLines[k];
+									if (slotting.Contains(pkgOrdLine3.Sku.InventoryId))
+									{
+										int combinedQty = 
+											packageOrderLine.CaseQuantityRemaining + 
+											pkgOrdLine2.CaseQuantityRemaining + 
+											pkgOrdLine3.CaseQuantityRemaining;
+
+										if (combinedQty == caseQuantity)
+										{
+											itemList.Add(packageOrderLine);
+											itemList.Add(pkgOrdLine2);
+											itemList.Add(pkgOrdLine3);
+
+											return itemList;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+
+				//If no combo is found just return the biggest one
+				packageOrderLines.Sort(new OrderLineComparator());
+				itemList.Add(packageOrderLines.Last());
+
+				return itemList;
+			}
+
+			return itemList;
+		}
+
 
 	}
 }

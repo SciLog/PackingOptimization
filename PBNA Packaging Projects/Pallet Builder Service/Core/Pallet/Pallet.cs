@@ -10,10 +10,21 @@ namespace ScientificLogistics.PalletBuilder.Core
 		#region -- Instance Variables ---
 
 		private Item _defaultPallet;
+		private bool _isElementOfMultiBaySet;
 
 		#endregion
 
 		#region -- Construtors --
+
+		public Pallet()
+		{
+			_defaultPallet = new Item()
+			{
+				Height = 5.25,
+				Width = 40.0,
+				Length = 48.0
+			};
+		}
 
 		public Pallet(Item defaultPallet)
 		{
@@ -26,17 +37,33 @@ namespace ScientificLogistics.PalletBuilder.Core
 		#region -- Public Properties --
 
 		public PalletType PalletType { get; set; } = PalletType.Unknown;
-		public List<PalletItem> PalletItems { get; } = new List<PalletItem>();
 
+		public List<PalletItem> PalletItems { get; } = new List<PalletItem>();
+		public List<PalletItem> DetailPalletItems { get; } = new List<PalletItem>();
 		public List<Order> Orders { get; } = new List<Order>(); 
 		public List<int> UnstablePackageIds { get; } = new List<int>();
+		public List<Layer> Layers { get; } = new List<Layer>();
 
 		public int NextLayerNumber { get; set; } = 1;
 	
 		public double UnstablePercentage { get; set; }
 
-		public int PalletNumber { get; set; } 
-		
+		public int PalletNumber { get; set; } = -1;
+
+		public double PercentageFullFullLayer { get; set; }
+		public double PercentageFullMXL { get; set; }
+		public double PercentageFullEaches { get; set; }
+
+		public double PackageTypeCount { get; set; }
+		public double PackageTypeCountFullLayer { get; set; }
+		public double PackageTypeCountMXL { get; set; }
+		public double PackageCountEaches { get; set; }
+
+		public double Height { get; set; }
+		public double Volume { get; set; }
+
+
+
 		//public Item DefaultItem { get; set; }
 		//public Item Item { get; set; }
 
@@ -45,8 +72,51 @@ namespace ScientificLogistics.PalletBuilder.Core
 
 		#endregion
 
-		
+
+
+		public bool CanAccomodateLayersOfOnePkg(double buildToPercentage, double overFlow, params Layer[] layers)
+		{
+			bool yes = false;
+
+			if ((layers != null) && (layers.Length > 0))
+			{
+				Package pkg = layers[0].Package;
+
+				double parPct = (double) layers.Length / pkg.LayersPerPallet;
+				double comPct = GetPercentageFull() + parPct;
+
+				yes = ((comPct < buildToPercentage) || (comPct >= buildToPercentage && comPct <= (buildToPercentage + overFlow)));
+			}
+
+			return yes;
+		}
+
+		public bool WouldAffectStackability(Layer layer)
+		{
+			bool xx = false;
+			int gpis = (layer.PickSequence ?? 0 / 100);
 			
+			foreach (Layer l in Layers)
+			{
+				int pis = (l.PickSequence ?? 0 / 100);
+				
+				xx = (gpis == 3) && (pis == gpis) && 
+					(l.Package.PackageId != layer.Package.PackageId);
+				
+				if (xx) { break; };
+			}
+			
+			return xx;
+		}
+
+		public List<int> GetPackagesOnPallet()
+		{
+			return Layers
+				.Select(l => l.Package.PackageId)
+				.Distinct()
+				.ToList();
+		}
+
 		private PalletItem GetPalletItemByInventoryId(int inventoryId, string orderId) =>
 			PalletItems.FirstOrDefault(pi =>
 				(pi.Layer == 0) &&

@@ -19,5 +19,11 @@ namespace ScientificLogistics.PalletBuilder.Core
 		public double MaximumPalletHeight { get; set; }
 
 		#endregion
+
+
+		public static bool IsAutoBuild(string buildMethodCode) =>
+			buildMethodCode == PalletBuilder.BuildMethodCode.HSLP ||
+			buildMethodCode == PalletBuilder.BuildMethodCode.MXLP;
+
 	}
 }

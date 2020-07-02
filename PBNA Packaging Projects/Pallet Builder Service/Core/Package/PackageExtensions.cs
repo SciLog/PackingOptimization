@@ -25,5 +25,15 @@ namespace ScientificLogistics.PalletBuilder.Core
 			pallet.UnstablePercentage = 0.0;
 			pallet.UnstablePackageIds.Clear();
 		}
+
+		// ---
+
+		public static bool IsUnstackable(this Package package, Location location) =>
+			location.Unstackables.Any(u => u.BottomPackageId == package.PackageId);
+
+		// ---
+
+		public static int HowManyCasesFit(this Pallet pallet, Package package, double buildToPct, double overflow) =>
+			(int)Math.Floor(((buildToPct + overflow) - pallet.GetPercentageFull()) * (package.CasesPerLayer * package.LayersPerPallet));
 	}
 }

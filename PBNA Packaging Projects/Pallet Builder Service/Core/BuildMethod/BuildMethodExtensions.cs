@@ -13,6 +13,5 @@ namespace ScientificLogistics.PalletBuilder.Core
 				?.FirstOrDefault(bm => bm.PickMethodCode == pickMethodCode)
 				?.LocationId ?? 0;
 		}
-
 	}
 }

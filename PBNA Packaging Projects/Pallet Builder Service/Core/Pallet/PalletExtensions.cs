@@ -16,5 +16,22 @@ namespace ScientificLogistics.PalletBuilder.Core
 				index += 1;
 			}
 		}
+
+		public static List<Pallet> GetWithPackage(this List<Pallet> pallets, Package pkg)
+		{
+			List<Pallet> palletsWithPackage = new List<Pallet>();
+
+			foreach (Pallet p in pallets)
+			{
+				if (p.ContainsPackage(pkg.PackageId))
+				{
+					palletsWithPackage.Add(p);
+				}
+			}
+
+			palletsWithPackage.Sort(new PalletComparator());
+
+			return palletsWithPackage;
+		}
 	}
 }
